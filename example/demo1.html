@@ -1,0 +1,112 @@
+﻿<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>前端上传图片压缩预览上传进度例子</title>
+    <style>
+        body { font-family: Microsoft Yahei,helvetica; position: relative; }
+        body, button, dd, dl, dt, form, h1, h2, h3, h4, iframe, img, input, li, p, td, textarea, ul { margin: 0; padding: 0; border: 0; resize: none; outline: 0; }
+        table { border-spacing: 0; border-collapse: collapse; }
+        canvas, iframe { display: block; }
+        img { border: none; vertical-align: middle; }
+        li { list-style-type: none; }
+        a:active, a:hover, a:link, a:visited { text-decoration: none; color: inherit; }
+        /*常用类*/
+        .hide { display: none !important; }
+        .notEvent { pointer-events: none; }
+        /*清除浮动*/
+        .clearfix:after { content: "."; display: block; height: 0; visibility: hidden; clear: both; overflow: hidden; }
+        /*图片列表*/
+        .imagelist { }
+        .imagelist ul { padding: 0; margin: 0; }
+        .imagelist li,
+        .imagelist .newbtn { width: 80px; height: 80px; position: relative; float: left; margin: 10px 10px 0 0; }
+        .imagelist li { background-color: #eee; background-position: 50% 50%; background-repeat: no-repeat; background-size: cover; }
+        .imagelist li i { position: absolute; z-index: 2; top: -8px; right: -8px; cursor: pointer; width: 14px; height: 14px; line-height: 14px; font-size: 12px; padding: 4px; font-style: initial; text-align: center; color: #fff; border-radius: 50%; background: rgba(0,0,0,.6); }
+        .imagelist li i:active { transform: scale3d(.92,.92,1); -webkit-transform: scale3d(.92,.92,1); }
+        .imagelist li[data-load='1'] { background: rgba(0,0,0,.4); }
+        .imagelist li[data-load='1']:after { content: ''; position: absolute; left: 50%; top: 50%; margin: -15px 0 0 -15px; width: 30px; height: 30px; background: url(loading.png) no-repeat; background-size: 100%; animation: rotate_cw 2s linear infinite; -webkit-animation: rotate_cw 2s linear infinite; }
+        .imagelist .newbtn { background: #eee; box-sizing: border-box; padding: 15px; border-radius: 2px; }
+        .imagelist .newbtn:active { background: #ddd; }
+        .imagelist .newbtn img { width: 50px; height: 50px; }
+        .imagelist .newbtn input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; }
+        /*form*/
+        .formwrap { padding: 10px; }
+        .formwrap button[type=submit] { display: block; margin: 30px 0; background: #1b82d2; font-size: 15px; color: #fff; line-height: 24px; width: 600px; max-width: 100%; padding: 10px 0; border-radius: 3px; }
+        .formwrap button[type=submit]:active { background: #1275c1; }
+
+        @keyframes rotate_cw {
+            0% { transform: rotateZ(0); }
+            100% { transform: rotateZ(360deg); }
+        }
+
+        @-webkit-keyframes rotate_cw {
+            0% { -webkit-transform: rotateZ(0); }
+            100% { -webkit-transform: rotateZ(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <form method="post" action="" enctype="multipart/form-data" class="formwrap" id="FormWrap">
+        <div class="imagelist clearfix">
+            <ul></ul>
+            <div class="newbtn">
+                <img src="image.png" />
+                <input data-role="none" type="file" multiple="multiple" onchange="ImageCompressed({ compressRatio: .1})">
+            </div>
+        </div>
+        <button type="submit">提交</button>
+    </form>
+    <script src="../src/ImageCompressed.js"></script>
+    <script>
+        //获取指定选择器的祖先元素列表
+        HTMLElement.prototype.parents = function (exp) {
+            var s = this;
+            var list = [];
+            //获取祖先元素列表
+            var node = s.parentNode;
+            var path = [];
+            while (node) {
+                path.push(node);
+                node = node.parentNode;
+            }
+            //筛选符合选择器的元素
+            var explist = document.querySelectorAll(exp);
+            var length = explist.length;
+            for (var i = 0; i < length; i++) {
+                if (path.indexOf(explist[i]) > -1) {
+                    list.push(explist[i]);
+                }
+            }
+            return list;
+        };
+        //图片压缩事件
+        ImageCompressed.on('prepare', function () {
+            console.log('准备压缩');
+        });
+        ImageCompressed.on('start', function (list) {
+            console.log('开始压缩');
+            var Fragment = document.createDocumentFragment();
+            list.forEach(function (item) {
+                //创建dom
+                var li = document.createElement('li');
+                li.innerHTML = '<i>X</i>';
+                li.setAttribute('data-load', 1);
+                Fragment.appendChild(li);
+                item.previewElement = li;
+                item.on('end', function () {
+                    this.previewElement.style.backgroundImage = 'url(' + item.base64 + ')';
+                    this.previewElement.setAttribute('data-load', 0);
+                });
+            });
+            var imagelist = ImageCompressed.currentTarget.parents('.imagelist')[0];
+            imagelist.querySelector('ul').appendChild(Fragment);
+        });
+        ImageCompressed.on('end', function (list) {
+            console.log('压缩结束');
+            console.log(list);
+        });
+    </script>
+</body>
+</html>
