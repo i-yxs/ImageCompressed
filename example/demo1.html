@@ -33,8 +33,8 @@
         .imagelist .newbtn input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; }
         /*form*/
         .formwrap { padding: 10px; }
-        .formwrap button[type=submit] { display: block; margin: 30px 0; background: #1b82d2; font-size: 15px; color: #fff; line-height: 24px; width: 600px; max-width: 100%; padding: 10px 0; border-radius: 3px; }
-        .formwrap button[type=submit]:active { background: #1275c1; }
+        .formwrap .submit_button { display: block; margin: 30px 0; text-align:center;background: #1b82d2; font-size: 15px; color: #fff; line-height: 24px; width: 600px; max-width: 100%; padding: 10px 0; border-radius: 3px; }
+        .formwrap .submit_button:active { background: #1275c1; }
 
         @keyframes rotate_cw {
             0% { transform: rotateZ(0); }
@@ -53,13 +53,15 @@
             <ul></ul>
             <div class="newbtn">
                 <img src="image.png" />
-                <input data-role="none" type="file" multiple="multiple" onchange="ImageCompressed({ compressRatio: .1})">
+                <input imagecompressed type="file" multiple="multiple" onchange="ImageCompressed({ compressRatio: .1})">
             </div>
         </div>
-        <button type="submit">提交</button>
+        <div class="submit_button" id="SubmitButton">提交</div>
     </form>
     <script src="../src/ImageCompressed.js"></script>
     <script>
+        //待上传图片缓存
+        var ToUploadCache = {};
         //获取指定选择器的祖先元素列表
         HTMLElement.prototype.parents = function (exp) {
             var s = this;
@@ -96,7 +98,10 @@
                 Fragment.appendChild(li);
                 item.previewElement = li;
                 item.on('end', function () {
+                    var id = Date.now();
+                    ToUploadCache[id] = this;
                     this.previewElement.style.backgroundImage = 'url(' + item.base64 + ')';
+                    this.previewElement.setAttribute('data-id', id);
                     this.previewElement.setAttribute('data-load', 0);
                 });
             });
@@ -106,6 +111,24 @@
         ImageCompressed.on('end', function (list) {
             console.log('压缩结束');
             console.log(list);
+        });
+        //上传
+        SubmitButton.addEventListener('click', function () {
+            var data = [];
+            Object.keys(ToUploadCache).forEach(function (name) {
+                data.push(['pic[]', ToUploadCache[name].binary, ToUploadCache[name].name]);
+            });
+            ImageCompressed.uploading.request({
+                url: '',
+                type: 'post',
+                data: data,
+                onsuccess: function (e) {
+                    console.log(e);
+                },
+                onprogress: function (e) {
+                    console.log(e);
+                }
+            });
         });
     </script>
 </body>

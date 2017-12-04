@@ -20,8 +20,9 @@
         解决安卓机上input file的accept!="image/*"时，不触发onchange事件
         但是在PC上input file设置accept="image/*"时，响应又非常慢
         所以需要判断是移动端还是PC端
+        使用方法：在input file上使用自定义属性imagecompressed
     */
-    [].forEach.call(document.querySelectorAll('input[type=file]'), function (item) {
+    [].forEach.call(document.querySelectorAll('input[type=file][imagecompressed]'), function (item) {
         if (isPcDevices) {
             item.setAttribute('accept', 'image/gif,image/jpeg,image/png');
         } else {
@@ -200,6 +201,54 @@
         }
     };
     /*
+        FormData兼容类，兼容不支持formdata上传blob的android机
+    */
+    function FormDataShim() {
+        console.warn('using formdata shim');
+        var o = this,
+            parts = [],
+            boundary = Array(21).join('-') + (+new Date() * (1e16 * Math.random())).toString(36),
+            oldSend = XMLHttpRequest.prototype.send;
+        this.append = function (name, value, filename) {
+            parts.push('--' + boundary + '\r\nContent-Disposition: form-data; name="' + name + '"');
+            if (value instanceof Blob) {
+                parts.push('; filename="' + (filename || 'blob') + '"\r\nContent-Type: ' + value.type + '\r\n\r\n');
+                parts.push(value);
+            }
+            else {
+                parts.push('\r\n\r\n' + value);
+            }
+            parts.push('\r\n');
+        };
+        // Override XHR send()
+        XMLHttpRequest.prototype.send = function (val) {
+            var fr,
+                data,
+                oXHR = this;
+            if (val === o) {
+                // Append the final boundary string
+                parts.push('--' + boundary + '--\r\n');
+                // Create the blob
+                data = getBlob(parts);
+                // Set up and read the blob into an array to be sent
+                fr = new FileReader();
+                fr.onload = function () {
+                    oldSend.call(oXHR, fr.result);
+                };
+                fr.onerror = function (err) {
+                    throw err;
+                };
+                fr.readAsArrayBuffer(data);
+                // Set the multipart content type and boudary
+                this.setRequestHeader('Content-Type', 'multipart/form-data; boundary=' + boundary);
+                XMLHttpRequest.prototype.send = oldSend;
+            }
+            else {
+                oldSend.call(this, val);
+            }
+        };
+    }
+    /*
         图片文件对象
     */
     function ImageFile(option) {
@@ -265,7 +314,7 @@
             //指定图片大小大于该参数时才进行压缩操作
             floorSize: 0,
             //指定图片的压缩比例(0-1)
-            compressRatio: .5,
+            compressedRatio: .5,
             //可选图片格式
             limitedFormat: 'jpeg|png|gif',
             //指定当png转jpg时，透明区域的颜色
@@ -283,7 +332,7 @@
             var reader = new FileReader();
             reader.onload = function () {
                 this.onload = null;
-                callback && callback.call(this.result);
+                callback && callback(this.result);
             };
             reader.readAsDataURL(file);
         },
@@ -292,11 +341,11 @@
             var img = new Image();
             img.onload = function () {
                 this.onload = this.onerror = null;
-                callback && callback.call(this, 1);
+                callback && callback(this, 1);
             };
             img.onerror = function () {
                 this.onload = this.onerror = null;
-                callback && callback.call(this, 0);
+                callback && callback(this, 0);
             };
             img.src = src;
         },
@@ -343,10 +392,10 @@
             setTimeout(function () {
                 //遍历列表
                 list.forEach(function (item) {
-                    s.loadFile(item.file, function () {
-                        item.base64 = this;
-                        s.loadImage(item.base64, function () {
-                            item.imageData = this;
+                    s.loadFile(item.file, function (data) {
+                        item.base64 = data;
+                        s.loadImage(item.base64, function (data) {
+                            item.imageData = data;
                             //只有当文件大小大于floorSize时才执行压缩操作
                             if (item.size > s.currentOption.floorSize) {
                                 item.base64 = s.compressed(item);
@@ -408,7 +457,7 @@
                 s.elementCache.compressedContext.drawImage(imf.imageData, 0, 0, width, height);
             }
             //压缩并输出base64数据
-            var ndata = s.elementCache.compressedCanvas.toDataURL(outputFormat, s.currentOption.compressRatio);
+            var ndata = s.elementCache.compressedCanvas.toDataURL(outputFormat, s.currentOption.compressedRatio);
             s.elementCache.compressedCanvas.width = s.elementCache.compressedCanvas.height = s.elementCache.tileCanvas.width = s.elementCache.tileCanvas.height = 0;
             return ndata;
         },
@@ -434,7 +483,97 @@
                 });
                 return bb.getBlob(format);
             }
-        }
+        },
+        //使用ajax上传封装
+        uploading: {
+            //XMLHttpRequest对象缓存
+            _xhrCache: null,
+            //默认选项
+            defaultOption: {
+                //请求地址
+                url: '',
+                //请求方式
+                type: 'post',
+                //请求超时时长，默认30s
+                timeout: 30000,
+                //请求数据，单个参数为一个数组(下标0为参数名，1为值，2为文件名称)
+                data: [],
+                //请求成功时
+                onsuccess: null,
+                //请求错误时
+                onerror: function () {
+                    console.log('网络异常！');
+                },
+                //请求失败时
+                onfailed: function (code) {
+                    console.log(code + '，请求失败！');
+                },
+                //请求超时时
+                ontimeout: function () {
+                    console.log('请求超时！');
+                },
+                //上传进度改变时
+                onprogress: null
+            },
+            //请求数据
+            request: function (option) {
+                if (!option) return;
+                var s = this;
+                var currentOption = {};
+                //过滤选项
+                Object.keys(s.defaultOption).forEach(function (name) {
+                    if (name in option) {
+                        currentOption[name] = option[name];
+                    } else {
+                        currentOption[name] = s.defaultOption[name];
+                    }
+                });
+                var formdata = s.getFormData();
+                currentOption.data.forEach(function (item) {
+                    formdata.append.apply(formdata, item);
+                });
+                //提交
+                s._xhrCache = new XMLHttpRequest();
+                s._xhrCache.timeout = currentOption.timeout;
+                s._xhrCache.open(currentOption.type, currentOption.url);
+                s._xhrCache.onerror = function (e) {
+                    currentOption.onerror && currentOption.onerror(e);
+                    s._xhrCache = null;
+                };
+                s._xhrCache.ontimeout = function (e) {
+                    currentOption.ontimeout && currentOption.ontimeout(e);
+                    s._xhrCache.abort();
+                    s._xhrCache = null;
+                };
+                s._xhrCache.onreadystatechange = function (e) {
+                    if (s._xhrCache.readyState == 4) {
+                        if (s._xhrCache.status === 200) {
+                            var data = s._xhrCache.responseText;
+                            try { data = JSON.parse(data) } catch (e) { };
+                            currentOption.onsuccess && currentOption.onsuccess(data);
+                        } else {
+                            currentOption.onfailed && currentOption.onfailed(s._xhrCache.status, s._xhrCache.responseText);
+                        }
+                        s._xhrCache = null;
+                    }
+                };
+                s._xhrCache.upload.onprogress = currentOption.onprogress;
+                s._xhrCache.send(formdata);
+            },
+            //终止请求
+            abort: function () {
+                var s = this;
+                s._xhrCache && s._xhrCache.abort();
+            },
+            //获取formdata
+            getFormData: function () {
+                var isNeedShim = ~navigator.userAgent.indexOf('Android')
+                    && ~navigator.vendor.indexOf('Google')
+                    && !~navigator.userAgent.indexOf('Chrome')
+                    && navigator.userAgent.match(/AppleWebKit\/(\d+)/).pop() <= 534;
+                return isNeedShim ? new FormDataShim() : new FormData()
+            }
+        },
     }, true);
     ImageCompressed.elementCache.compressedContext = ImageCompressed.elementCache.compressedCanvas.getContext('2d');
     ImageCompressed.elementCache.tileContext = ImageCompressed.elementCache.tileCanvas.getContext('2d');
