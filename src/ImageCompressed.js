@@ -1,7 +1,7 @@
 ﻿/*
     图片压缩封装
     作者：yxs
-    项目地址：https://github.com/qq597392321/ImageCompressed
+    项目地址：https://github.com/i-yxs/ImageCompressed
 */
 (function (window) {
     'use strict'
